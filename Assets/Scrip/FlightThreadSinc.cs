@@ -2,10 +2,11 @@ using System.Collections.Generic;
 using System.Threading;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using Unity.VisualScripting;
+using System.IO;
+using System.Linq.Expressions;
 
-public class FlightThread : MonoBehaviour 
-    {
+
+public class FlightThreadSinc : MonoBehaviour {
     // Variable de clase
     public float speed = 50f;
     public float rotationSpeed = 100f;
@@ -24,14 +25,22 @@ public class FlightThread : MonoBehaviour
     private bool stopTurbulencethread = false;
     private float captureTime;
 
+    //Banderas de control sobre lectura
+    public bool read = false;
+    public bool write = false;
+    public object filelock = new object();
+    string filepath;
+
     //Metodo para leer la entradad del teclado
-    public void OnMovement(InputValue value) {
+    public void OnMovement(InputValue value) 
+    { 
         {
             movementInput = value.Get<Vector2>();
         }
 
         void Start() {
-
+            filepath = Application.dataPath + "/TurbulenceData.txt";
+            Debug.Log("Ruta al archivo: " + filepath);
         }
 
         // Update is called once per frame
@@ -64,11 +73,19 @@ public class FlightThread : MonoBehaviour
         float yaw = movementInput.x * rotationSpeed * Time.deltaTime;
         transform.Rotate(0, yaw, 0);
 
+        //mETODO PARA LECTURA DEL ARC
+        if(write && !read) 
+            {
+            TryReadFile();
+            read = true;
+        }
+        
+
     }
 
-        //Metodo para simular turbulencias
+    //Metodo para simular turbulencias
 
-        public void SimulateTurbulence(float time) {
+    public void SimulateTurbulence(float time) {
         turbulenceForces.Clear();
 
         //Repeticiones
@@ -88,10 +105,51 @@ public class FlightThread : MonoBehaviour
         //Señal en consola de inicio del hilo
         Debug.Log("Iniciando simulacioens de turbulencia");
 
+        //escritura del archivo 
+            
+        lock (filelock) 
+            {
+            using (StreamWriter writer = new StreamWriter(filepath, false)) {
+                foreach (var force in turbulenceForces) {
+                    writer.WriteLine(force.ToString());
+                }
+                writer.Flush();
+            }
+
+        }
+
+        Debug.Log("Archivo escrito");
+
+        write = true; 
+
         //Simulacion completada
         isTurbulenceRunning = false;
 
     }
+
+
+    public void TryReadFile() {
+        try {
+            lock (filelock) {
+                if(File.Exists(filepath)) 
+                    {
+                    string content = File.ReadAllText(filepath);
+                    Debug.Log("Archivo leido:" + content);
+                }
+                else { Debug.LogError("Ocurrio un problema"); }
+
+            }
+
+
+            
+        } 
+        catch (IOException ex) {
+            Debug.LogError("Error en acceso al archivo: " + ex.Message);
+        }
+    }
+
+
+
     private void OnDestroy() {
         //Indicar el cierra del hilo secundario
         stopTurbulencethread = true;
@@ -104,4 +162,3 @@ public class FlightThread : MonoBehaviour
     }
 }
 
-//Consume recursos pq en el profiler me indica
